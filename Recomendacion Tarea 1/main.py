@@ -65,3 +65,76 @@ def obtener_vecinos(datos, usuario_objetivo, k=3):
     lista_similitudes.sort(key=lambda x: x[1], reverse=True)
     return lista_similitudes[:k]
 
+==============================
+# 5. GENERAR RECOMENDACIONES
+# ==============================
+def recomendar(datos, usuario_objetivo, k=3):
+    vecinos_cercanos = obtener_vecinos(datos, usuario_objetivo, k)
+    totales = {}
+    similitudes = {}
+
+    for vecino, similitud in vecinos_cercanos:
+        if similitud <= 0: continue
+        for item in datos[vecino]:
+            if item not in datos[usuario_objetivo]:
+                totales.setdefault(item, 0)
+                similitudes.setdefault(item, 0)
+                totales[item] += datos[vecino][item] * similitud
+                similitudes[item] += similitud
+
+    ranking = []
+    for item in totales:
+        if similitudes[item] != 0:
+            score = totales[item] / similitudes[item]
+            ranking.append((item, score))
+    ranking.sort(key=lambda x: x[1], reverse=True)
+    return ranking
+
+# ==============================
+# 6. BLOQUE PRINCIPAL (MAIN)
+# ==============================
+def main():
+    print("--- RecoMusic KNN (Pearson + Manhattan) ---\n")
+    
+    nombre_archivo = "dataset.csv" 
+    datos = cargar_datos(nombre_archivo)
+
+    if datos is None:
+        print(f"Error: No se encontró el archivo '{nombre_archivo}'.")
+        return
+
+    usuario = input("Ingrese el nombre del usuario: ")
+    if usuario not in datos:
+        print("Error: El usuario no existe.")
+        return
+
+    # A. DISTANCIAS CON MANHATTAN (TABLA COMPLETA ORDENADA)
+    print(f"\n1. DISTANCIAS MANHATTAN (De menor a mayor distancia):")
+    lista_m = []
+    for otro in datos:
+        if otro != usuario:
+            dist = manhattan(datos[usuario], datos[otro])
+            lista_m.append((otro, dist))
+    
+    lista_m.sort(key=lambda x: x[1]) # El 0 es el más cercano
+    for nombre, d in lista_m:
+        print(f" > {nombre:10} | Distancia: {round(d, 2)}")
+
+    # B. LOS 3 VECINOS MÁS CERCANOS (KNN - PEARSON)
+    print(f"\n2. LOS 3 VECINOS MÁS CERCANOS (Seleccionados por Pearson):")
+    mis_vecinos = obtener_vecinos(datos, usuario, k=3)
+    for v, sim in mis_vecinos:
+        print(f" >> Vecino: {v:10} | Similitud: {round(sim, 4)}")
+
+    # C. RECOMENDACIONES
+    print("\n3. RECOMENDACIONES FINALES:")
+    recomendaciones = recomendar(datos, usuario, k=3)
+    
+    if not recomendaciones:
+        print("No hay recomendaciones nuevas para mostrar.")
+    else:
+        for item, score in recomendaciones:
+            print(f" * {item:15} -> Puntuación estimada: {round(score, 2)}")
+
+if __name__ == "__main__":
+    main()
