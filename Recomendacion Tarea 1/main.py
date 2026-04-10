@@ -51,3 +51,17 @@ def pearson(usuario1, usuario2):
     if denominador == 0: return 0
     return numerador / denominador
 
+# ==============================
+# 4. KNN (LOS 3 VECINOS MÁS CERCANOS)
+# ==============================
+def obtener_vecinos(datos, usuario_objetivo, k=3):
+    lista_similitudes = []
+    for otro_usuario in datos:
+        if otro_usuario != usuario_objetivo:
+            sim = pearson(datos[usuario_objetivo], datos[otro_usuario])
+            lista_similitudes.append((otro_usuario, sim))
+    
+    # Ordenamos por similitud Pearson (los más altos primero)
+    lista_similitudes.sort(key=lambda x: x[1], reverse=True)
+    return lista_similitudes[:k]
+
