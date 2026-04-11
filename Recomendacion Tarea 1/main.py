@@ -65,7 +65,6 @@ def obtener_vecinos(datos, usuario_objetivo, k=3):
     lista_similitudes.sort(key=lambda x: x[1], reverse=True)
     return lista_similitudes[:k]
 
-==============================
 # 5. GENERAR RECOMENDACIONES
 # ==============================
 def recomendar(datos, usuario_objetivo, k=3):
