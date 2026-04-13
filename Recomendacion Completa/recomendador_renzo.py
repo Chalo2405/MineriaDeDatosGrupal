@@ -53,6 +53,27 @@ def pearson_manual(u1, u2):
     den = (np.sum((v1 - mu1)**2)**0.5) * (np.sum((v2 - mu2)**2)**0.5)
     return num / den if den != 0 else 0
 
+def obtener_vecinos_cercanos_manhattan(matriz, user_id, k=10, min_comunes=3):
+    if user_id not in matriz.index:
+        return []
+
+    u_obj = matriz.loc[user_id]
+    vecinos = []
+
+    for otro_id in matriz.index:
+        if otro_id == user_id:
+            continue
+
+        u_otro = matriz.loc[otro_id]
+        comunes = u_obj.dropna().index.intersection(u_otro.dropna().index)
+
+        if len(comunes) >= min_comunes:
+            distancia = sum(abs(u_obj[i] - u_otro[i]) for i in comunes)
+            vecinos.append((otro_id, distancia, len(comunes)))
+
+    vecinos.sort(key=lambda x: (x[1], -x[2]))
+    return vecinos[:k]
+
 # ==============================
 # 3. MOTOR DE RECOMENDACIÓN INTELIGENTE
 # ==============================
