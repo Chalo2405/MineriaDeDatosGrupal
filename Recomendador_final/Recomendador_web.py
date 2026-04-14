@@ -2,6 +2,13 @@ import streamlit as st
 import pandas as pd
 import time
 import Recomendador as motor
+import psutil
+import os
+
+def obtener_memoria_mb():
+    proceso = psutil.Process(os.getpid())
+    memoria_bytes = proceso.memory_info().rss
+    return memoria_bytes / (1024 * 1024)
 
 # Configuración de página
 st.set_page_config(page_title="Recomendador Renzo", layout="wide", page_icon="🎬")
@@ -79,9 +86,13 @@ if opcion_menu == "🔍 Motor Colaborativo (Vecinos)":
 
     with col1:
         if st.button("🚀 Generar Recomendaciones (Pearson)", use_container_width=True):
+            memoria_antes = obtener_memoria_mb()
             inicio = time.perf_counter()
+
             recos, media = motor.obtener_recomendaciones(matriz, movies, uid, k_vecinos, "pearson", soporte)
+
             tiempo = time.perf_counter() - inicio
+            memoria_usada = obtener_memoria_mb() - memoria_antes
 
             st.success(f"Promedio histórico del usuario {uid}: **{round(media, 2)}**")
             if recos:
@@ -89,20 +100,24 @@ if opcion_menu == "🔍 Motor Colaborativo (Vecinos)":
                 st.dataframe(pd.DataFrame(recos, columns=["Título", "Score", "Votos Vecinos"]).head(10), use_container_width=True)
             else:
                 st.warning("No hay recomendaciones con estos filtros.")
-            st.info(f"⏱️ Tiempo: {tiempo:.4f}s")
+            st.info(f"⏱️ Tiempo: {tiempo:.4f}s | 🧠 RAM usada: {memoria_usada:.4f} MB")
 
     with col2:
         if st.button("👥 Ver Vecinos Cercanos (Manhattan)", use_container_width=True):
+            memoria_antes = obtener_memoria_mb()
             inicio = time.perf_counter()
+
             vecinos = motor.obtener_vecinos_cercanos_manhattan(matriz, uid, k_vecinos, min_comunes)
+
             tiempo = time.perf_counter() - inicio
+            memoria_usada = obtener_memoria_mb() - memoria_antes
 
             if vecinos:
                 st.subheader(f"🤝 Top {k_vecinos} Vecinos Físicos")
                 st.dataframe(pd.DataFrame(vecinos, columns=["ID Vecino", "Distancia", "Pelis Común"]).head(10), use_container_width=True)
             else:
                 st.warning("No se encontraron vecinos.")
-            st.info(f"⏱️ Tiempo: {tiempo:.4f}s")
+            st.info(f"⏱️ Tiempo: {tiempo:.4f}s | 🧠 RAM usada: {memoria_usada:.4f} MB")
 
 
 # ==============================================================
@@ -115,6 +130,7 @@ elif opcion_menu == "🧠 Motor Híbrido (Influencers/Géneros)":
     umbral_score = st.slider("Umbral mínimo de calidad (Score Objetivo)", 1.0, 5.0, 3.5, step=0.1)
     
     if st.button("✨ Analizar Perfil y Recomendar", use_container_width=True):
+        memoria_antes = obtener_memoria_mb()
         inicio = time.perf_counter()
         
         # 1. Obtener historial del usuario
@@ -166,7 +182,10 @@ elif opcion_menu == "🧠 Motor Híbrido (Influencers/Géneros)":
                 else:
                     st.warning("Ya has visto todas las películas buenas de este género o ninguna supera el umbral establecido.")
                     
-        st.info(f"⏱️ Tiempo de ejecución manual: {time.perf_counter() - inicio:.4f}s")
+        tiempo = time.perf_counter() - inicio
+        memoria_usada = obtener_memoria_mb() - memoria_antes
+
+        st.info(f"⏱️ Tiempo: {tiempo:.4f}s | 🧠 RAM usada: {memoria_usada:.4f} MB")
 
 
 # ==============================================================
