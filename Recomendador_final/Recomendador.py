@@ -35,7 +35,7 @@ def manhattan_manual(u1, u2):
         return float('inf')
 
     distancia = sum(abs(u1[i] - u2[i]) for i in comunes)
-    return distancia
+    return distancia 
 
 
 def euclidiana_manual(u1, u2):
@@ -379,6 +379,139 @@ def calcular_afinidad_generos_manual(historial_usuario_lista, dicc_peliculas_gen
         afinidad_final[genero] = frecuencia * promedio_nota_genero
         
     return afinidad_final
+
+
+# ==============================================================
+# 8. MENÚ DE CONSOLA INTEGRADO
+# ==============================================================
+
+def menu():
+    print("Cargando base de datos MovieLens...")
+    matriz, movies = cargar_datos()
+    if matriz is None: return
+
+    while True:
+        print("\n========================================")
+        print("   SISTEMA DE RECOMENDACIÓN MULTI-MOTOR")
+        print("========================================")
+        print(f"Usuarios en sistema: {len(matriz.index)}")
+        print("1. Generar Recomendaciones (Colaborativo Clásico)")
+        print("2. Generar Recomendaciones (Motor Híbrido - Influencers) -> TAREA 3")
+        print("3. Salir")
+        
+        op = input("\nSeleccione opción: ")
+        
+        # ---------------------------------------------------------
+        # OPCIÓN 1: MOTOR COLABORATIVO (El que ya tenías)
+        # ---------------------------------------------------------
+        if op == "1":
+            try:
+                uid = int(input("ID de Usuario (1-610): "))
+                if uid not in matriz.index:
+                    print("Usuario no existe.")
+                    continue
+                
+                print("\nMétricas: pearson | coseno | manhattan | euclidiana")
+                met = input("Elija métrica: ").lower().strip()
+                k = int(input("Número de vecinos (K): "))
+                soporte = int(input("Mínimo de vecinos que deben haber visto la película (Soporte): "))
+                
+                recos, media = obtener_recomendaciones(matriz, movies, uid, k, met, soporte)
+                
+                print(f"\n--- RESULTADOS PARA USUARIO {uid} ---")
+                print(f"Su promedio de nota actual es: {round(media, 2)}")
+                print(f"Mostrando top 10 que superan su promedio y tienen soporte >= {soporte}:")
+                print("-" * 60)
+                
+                if not recos:
+                    print("No se encontraron películas que cumplan los filtros.")
+                else:
+                    for i, (tit, score, n) in enumerate(recos[:10], 1):
+                        print(f"{i}. {tit[:40]:40} | Score: {round(score, 2)} | (Visto por {n} vecinos)")
+            except ValueError:
+                print("Error: Ingrese valores numéricos válidos.")
+
+        # ---------------------------------------------------------
+        # OPCIÓN 2: MOTOR HÍBRIDO (TAREA 3)
+        # ---------------------------------------------------------
+        elif op == "2":
+            try:
+                uid = int(input("ID de Usuario (1-610): "))
+                if uid not in matriz.index:
+                    print("Usuario no existe.")
+                    continue
+                
+                umbral = float(input("Ingrese umbral mínimo de calidad (ej. 3.5): "))
+                
+                print("\nAnalizando perfil y calculando promedios ajustados... (Espere unos segundos)")
+                
+                # Cargamos los datos crudos necesarios para la Tarea 3
+                df_ratings_full = pd.read_csv("ml-latest-small/ratings.csv")
+                df_movies_full = pd.read_csv("ml-latest-small/movies.csv")
+                
+                # 1. Crear diccionario de géneros para buscar rápido
+                dicc_generos = dict(zip(df_movies_full['movieId'], df_movies_full['genres'].str.split('|')))
+                
+                # 2. Extraer historial del usuario en formato de lista para la función manual
+                historial_usuario = df_ratings_full[df_ratings_full['userId'] == uid][['movieId', 'rating']].values.tolist()
+                
+                # 3. Perfilar al usuario (Calcular Afinidad)
+                afinidades = calcular_afinidad_generos_manual(historial_usuario, dicc_generos)
+                
+                if not afinidades:
+                    print("No se pudo detectar un perfil de géneros para este usuario.")
+                    continue
+                    
+                # Ordenar para obtener el género Top 1
+                generos_ordenados = sorted(afinidades.items(), key=lambda x: x[1], reverse=True)
+                genero_top = generos_ordenados[0][0]
+                afinidad_top = generos_ordenados[0][1]
+                
+                print(f"\n> PERFIL DETECTADO: El género favorito del usuario es '{genero_top.upper()}' (Afinidad: {afinidad_top:.2f})")
+                print("> Invocando al Influencer de", genero_top.upper(), "...")
+                
+                # 4. Calcular la Verdad del Mercado (Scores Objetivos Manuales)
+                scores_obj, prom_global = calcular_scores_objetivos_manual(df_ratings_full)
+                
+                # 5. Filtrar recomendaciones del Influencer
+                peliculas_vistas = set([int(x[0]) for x in historial_usuario])
+                recomendaciones_influencer = []
+                
+                for m_id, score in scores_obj.items():
+                    # Validar Umbral y que no la haya visto
+                    if score >= umbral and m_id not in peliculas_vistas:
+                        generos_de_esta_peli = dicc_generos.get(m_id, [])
+                        # Validar que sea del género favorito
+                        if genero_top in generos_de_esta_peli:
+                            filtro_titulo = df_movies_full[df_movies_full['movieId'] == m_id]
+                            if not filtro_titulo.empty:
+                                titulo = filtro_titulo['title'].values[0]
+                                recomendaciones_influencer.append((titulo, score))
+                
+                # Ordenar de mayor puntaje a menor puntaje
+                recomendaciones_influencer.sort(key=lambda x: x[1], reverse=True)
+                
+                print(f"\n--- TOP 10 RECOMENDACIONES DEL INFLUENCER ({genero_top}) ---")
+                print("-" * 60)
+                if not recomendaciones_influencer:
+                    print("Ya has visto todas las películas buenas de este género o ninguna supera el umbral.")
+                else:
+                    for i, (tit, score) in enumerate(recomendaciones_influencer[:10], 1):
+                        print(f"{i}. {tit[:40]:40} | Score Objetivo: {round(score, 2)} / 5.0")
+                        
+            except ValueError:
+                print("Error: Ingrese valores numéricos válidos.")
+
+        # ---------------------------------------------------------
+        # OPCIÓN 3: SALIR
+        # ---------------------------------------------------------
+        elif op == "3":
+            print("Saliendo del sistema...")
+            break
+        else:
+            print("Opción no válida. Intente de nuevo.")
+
+
 
 
 if __name__ == "__main__":
