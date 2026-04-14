@@ -4,233 +4,234 @@ import time
 import Recomendador as motor
 
 # Configuración de página
-st.set_page_config(page_title="Recomendador Renzo", layout="wide")
+st.set_page_config(page_title="Recomendador Renzo", layout="wide", page_icon="🎬")
 
-st.title("Sistema de Recomendación de Películas")
+st.title("🎬 Sistema de Recomendación de Películas")
 st.markdown("---")
 
 # ==============================
-# CACHE DE DATOS
+# CACHE DE DATOS INTEGRADO
 # ==============================
 @st.cache_data
-def cargar_datos_cacheados():
-    return motor.cargar_datos()
+def cargar_todos_los_datos():
+    # 1. Carga normal del código original
+    matriz, movies = motor.cargar_datos()
+    
+    # 2. Carga extendida para la Tarea 3 (Sin modificar Recomendador.py)
+    df_ratings_full = pd.read_csv("ml-latest-small/ratings.csv")
+    df_movies_full = pd.read_csv("ml-latest-small/movies.csv")
+    
+    # Crear diccionario de géneros {movieId: [genero1, genero2...]}
+    dicc_generos = dict(zip(df_movies_full['movieId'], df_movies_full['genres'].str.split('|')))
+    
+    # Calcular los promedios manuales y limpios (Esto tarda unos segundos la primera vez)
+    scores_objetivos, promedio_global = motor.calcular_scores_objetivos_manual(df_ratings_full)
+    
+    return matriz, movies, df_ratings_full, df_movies_full, dicc_generos, scores_objetivos, promedio_global
 
 # ==============================
-# SESSION STATE
+# INICIALIZACIÓN
 # ==============================
-if "cargado" not in st.session_state:
-    st.session_state.cargado = False
-
-if "tiempo_carga_mostrado" not in st.session_state:
-    st.session_state.tiempo_carga_mostrado = False
-
 if "peliculas_nuevo_usuario" not in st.session_state:
     st.session_state.peliculas_nuevo_usuario = []
 
-# ==============================
-# CARGA CONTROLADA
-# ==============================
-inicio_carga = time.perf_counter()
-
-if not st.session_state.cargado:
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
-    for i in range(100):
-        time.sleep(0.01)
-        progress_bar.progress(i + 1)
-        status_text.text(f"Cargando dataset... {i+1}%")
-
-    matriz, movies = cargar_datos_cacheados()
-
-    progress_bar.empty()
-    status_text.empty()
-
-    st.session_state.cargado = True
-else:
-    matriz, movies = cargar_datos_cacheados()
-
-fin_carga = time.perf_counter()
-tiempo_carga = fin_carga - inicio_carga
+with st.spinner("Cargando y procesando motores de recomendación (Esto puede tardar unos segundos)..."):
+    try:
+        matriz, movies, df_ratings_full, df_movies_full, dicc_generos, scores_obj, prom_global = cargar_todos_los_datos()
+    except Exception as e:
+        st.error(f"Error al cargar los datos: {e}")
+        st.stop()
 
 # ==============================
-# MENSAJE TEMPORAL DE CARGA
+# BARRA LATERAL (MENÚ Y GLOBALES)
 # ==============================
-mensaje_placeholder = st.empty()
+st.sidebar.title("Navegación")
+opcion_menu = st.sidebar.radio(
+    "Selecciona un módulo:",
+    [
+        "🔍 Motor Colaborativo (Vecinos)",
+        "🧠 Motor Híbrido (Influencers/Géneros)",
+        "👤 Agregar Nuevo Usuario",
+        "📊 Análisis del Dataset"
+    ]
+)
 
-if not st.session_state.tiempo_carga_mostrado:
-    mensaje_placeholder.success("Dataset cargado correctamente")
-    mensaje_placeholder.info(f"Tiempo total de carga: {tiempo_carga:.4f} segundos")
+st.sidebar.markdown("---")
+st.sidebar.header("⚙️ Usuario Activo")
+uid = st.sidebar.number_input("ID de Usuario Objetivo", 1, int(matriz.index.max()), 2)
 
-    # Espera 3 segundos y desaparece
-    time.sleep(3)
-    mensaje_placeholder.empty()
 
-    st.session_state.tiempo_carga_mostrado = True
+# ==============================================================
+# VISTA 1: MOTOR COLABORATIVO (PEARSON / MANHATTAN)
+# ==============================================================
+if opcion_menu == "🔍 Motor Colaborativo (Vecinos)":
+    st.header("🔍 Motor Colaborativo (Basado en Usuarios)")
+    st.write("Encuentra recomendaciones basándose en la correlación y distancia con otros usuarios de la red.")
+    
+    col_params1, col_params2 = st.columns(2)
+    with col_params1:
+        k_vecinos = st.slider("Cantidad de Vecinos (K)", 5, 300, 50)
+        soporte = st.slider("Soporte mínimo (Votos en común)", 1, 50, 5)
+    with col_params2:
+        min_comunes = st.slider("Películas mínimas para calcular distancia (Manhattan)", 1, 20, 3)
 
-# ==============================
-# CONTENIDO PRINCIPAL
-# ==============================
-if matriz is not None:
+    col1, col2 = st.columns(2)
 
-    st.subheader("Información del Dataset")
-    st.write(f"Usuarios: {matriz.shape[0]}")
-    st.write(f"Películas: {matriz.shape[1]}")
-    st.write(f"Calificaciones totales: {matriz.count().sum()}")
-
-    # ==============================
-    # SIDEBAR ORGANIZADO
-    # ==============================
-    st.sidebar.header(" Recomendaciones")
-    uid = st.sidebar.number_input("ID de Usuario", 1, int(matriz.index.max()), 2)
-    k_vecinos = st.sidebar.slider("Vecinos (K)", 5, 300, 50)
-    soporte = st.sidebar.slider("Soporte mínimo (Votos)", 1, 50, 5)
-
-    st.sidebar.header("Vecinos (Manhattan)")
-    min_comunes = st.sidebar.slider("Películas mínimas en común", 1, 20, 3)
-
-    col1, col2 = st.columns([2, 1])
-
-    # ==============================
-    # FUNCIONES PRINCIPALES
-    # ==============================
     with col1:
-        st.subheader("Opciones del sistema")
-
-        # RECOMENDACIONES
-        if st.button("Generar Recomendaciones"):
+        if st.button("🚀 Generar Recomendaciones (Pearson)", use_container_width=True):
             inicio = time.perf_counter()
+            recos, media = motor.obtener_recomendaciones(matriz, movies, uid, k_vecinos, "pearson", soporte)
+            tiempo = time.perf_counter() - inicio
 
-            recos, media = motor.obtener_recomendaciones(
-                matriz, movies, uid, k_vecinos, "pearson", soporte
-            )
-
-            fin = time.perf_counter()
-            tiempo = fin - inicio
-
-            st.success(f"Promedio del usuario {uid}: **{round(media, 2)}**")
-            st.info(f"Tiempo de ejecución: **{tiempo:.6f} segundos**")
-
+            st.success(f"Promedio histórico del usuario {uid}: **{round(media, 2)}**")
             if recos:
-                df_recos = pd.DataFrame(
-                    recos,
-                    columns=["Título", "Score", "Votos Vecinos"]
-                )
-                st.subheader("Top Recomendaciones para ti")
-                st.dataframe(df_recos.head(20), use_container_width=True)
+                st.subheader("🏆 Top Recomendaciones")
+                st.dataframe(pd.DataFrame(recos, columns=["Título", "Score", "Votos Vecinos"]).head(10), use_container_width=True)
             else:
-                st.warning("No hay películas que superen los filtros establecidos.")
+                st.warning("No hay recomendaciones con estos filtros.")
+            st.info(f"⏱️ Tiempo: {tiempo:.4f}s")
 
-        # VECINOS
-        if st.button("Ver vecinos más cercanos (Manhattan)"):
+    with col2:
+        if st.button("👥 Ver Vecinos Cercanos (Manhattan)", use_container_width=True):
             inicio = time.perf_counter()
-
-            vecinos = motor.obtener_vecinos_cercanos_manhattan(
-                matriz, uid, k_vecinos, min_comunes
-            )
-
-            fin = time.perf_counter()
-            tiempo = fin - inicio
-
-            st.info(f"Tiempo de ejecución: **{tiempo:.6f} segundos**")
+            vecinos = motor.obtener_vecinos_cercanos_manhattan(matriz, uid, k_vecinos, min_comunes)
+            tiempo = time.perf_counter() - inicio
 
             if vecinos:
-                df_vecinos = pd.DataFrame(
-                    vecinos,
-                    columns=["ID Usuario Vecino", "Distancia Manhattan", "Películas en común"]
-                )
-                st.subheader(f"Top {k_vecinos} vecinos más cercanos del usuario {uid}")
-                st.dataframe(df_vecinos, use_container_width=True)
+                st.subheader(f"🤝 Top {k_vecinos} Vecinos Físicos")
+                st.dataframe(pd.DataFrame(vecinos, columns=["ID Vecino", "Distancia", "Pelis Común"]).head(10), use_container_width=True)
             else:
-                st.warning("No se encontraron vecinos con películas en común.")
+                st.warning("No se encontraron vecinos.")
+            st.info(f"⏱️ Tiempo: {tiempo:.4f}s")
 
-        # ==============================
-        # AGREGAR USUARIO
-        # ==============================
-        st.markdown("---")
-        st.subheader("Agregar Usuario")
 
+# ==============================================================
+# VISTA 2: MOTOR HÍBRIDO (INFLUENCERS - TAREA 3)
+# ==============================================================
+elif opcion_menu == "🧠 Motor Híbrido (Influencers/Géneros)":
+    st.header("🧠 Motor Híbrido: Perfilado de Usuario e Influencers")
+    st.write("Este motor analiza matemáticamente tus afinidades por género y extrae las películas mejor valoradas objetivamente.")
+    
+    umbral_score = st.slider("Umbral mínimo de calidad (Score Objetivo)", 1.0, 5.0, 3.5, step=0.1)
+    
+    if st.button("✨ Analizar Perfil y Recomendar", use_container_width=True):
+        inicio = time.perf_counter()
+        
+        # 1. Obtener historial del usuario
+        historial_usuario = df_ratings_full[df_ratings_full['userId'] == uid][['movieId', 'rating']].values.tolist()
+        
+        if len(historial_usuario) == 0:
+            st.error("Este usuario no tiene un historial de películas calificadas.")
+        else:
+            # 2. Calcular Afinidad Manualmente
+            afinidades = motor.calcular_afinidad_generos_manual(historial_usuario, dicc_generos)
+            
+            if not afinidades:
+                st.error("No se pudo determinar la afinidad.")
+            else:
+                # Ordenar géneros por afinidad
+                generos_ordenados = sorted(afinidades.items(), key=lambda x: x[1], reverse=True)
+                genero_top = generos_ordenados[0][0]
+                afinidad_top = generos_ordenados[0][1]
+                
+                # Mostrar perfilado
+                st.success(f"**Análisis completado.** El género favorito del Usuario {uid} es: **{genero_top}** (Afinidad: {afinidad_top:.2f})")
+                
+                # Mostrar lista de afinidades
+                with st.expander("Ver desglose completo de afinidades por género"):
+                    df_afinidad = pd.DataFrame(generos_ordenados, columns=["Género", "Score de Afinidad"])
+                    st.dataframe(df_afinidad, use_container_width=True)
+                
+                # 3. Filtrar recomendaciones usando el Score Objetivo (El Influencer)
+                peliculas_vistas = set([x[0] for x in historial_usuario])
+                recomendaciones_influencer = []
+                
+                for m_id, score in scores_obj.items():
+                    if score >= umbral_score and m_id not in peliculas_vistas:
+                        generos_de_esta_peli = dicc_generos.get(m_id, [])
+                        if genero_top in generos_de_esta_peli:
+                            # Obtener título
+                            filtro_titulo = df_movies_full[df_movies_full['movieId'] == m_id]
+                            if not filtro_titulo.empty:
+                                titulo = filtro_titulo['title'].values[0]
+                                recomendaciones_influencer.append((titulo, score))
+                
+                # Ordenar de mejor a peor
+                recomendaciones_influencer.sort(key=lambda x: x[1], reverse=True)
+                
+                st.subheader(f"🎬 Recomendaciones del Influencer de '{genero_top}'")
+                if recomendaciones_influencer:
+                    df_influencer = pd.DataFrame(recomendaciones_influencer, columns=["Película", "Score Objetivo (0-5)"])
+                    st.dataframe(df_influencer.head(15), use_container_width=True)
+                else:
+                    st.warning("Ya has visto todas las películas buenas de este género o ninguna supera el umbral establecido.")
+                    
+        st.info(f"⏱️ Tiempo de ejecución manual: {time.perf_counter() - inicio:.4f}s")
+
+
+# ==============================================================
+# VISTA 3: AGREGAR NUEVO USUARIO
+# ==============================================================
+elif opcion_menu == "👤 Agregar Nuevo Usuario":
+    st.header("👤 Añadir Usuario a la Base de Datos")
+    
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
         texto_busqueda = st.text_input("Buscar película por nombre")
 
         if texto_busqueda.strip() != "":
             resultados = motor.buscar_peliculas_por_nombre(movies, texto_busqueda)
 
             if not resultados.empty:
-                pelicula_seleccionada = st.selectbox(
-                    "Seleccione una película",
-                    resultados["title"].tolist()
-                )
+                pelicula_seleccionada = st.selectbox("Seleccione una película", resultados["title"].tolist())
+                rating_nuevo = st.selectbox("Calificación", [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
 
-                rating_nuevo = st.selectbox(
-                    "Calificación",
-                    [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
-                )
-
-                if st.button("Agregar película"):
+                if st.button("➕ Agregar al carrito de calificaciones", use_container_width=True):
                     fila = resultados[resultados["title"] == pelicula_seleccionada].iloc[0]
                     movie_id = int(fila["movieId"])
-
-                    st.session_state.peliculas_nuevo_usuario.append(
-                        (movie_id, pelicula_seleccionada, rating_nuevo)
-                    )
-
-                    st.success("Película agregada.")
-
+                    st.session_state.peliculas_nuevo_usuario.append((movie_id, pelicula_seleccionada, rating_nuevo))
+                    st.success("Película agregada a la lista temporal.")
             else:
                 st.warning("No se encontraron resultados.")
 
-        # LISTA TEMPORAL
+    with col2:
+        st.subheader("Lista de Valoraciones")
         if st.session_state.peliculas_nuevo_usuario:
-            df_temp = pd.DataFrame(
-                st.session_state.peliculas_nuevo_usuario,
-                columns=["movieId", "Título", "Rating"]
-            )
-
+            df_temp = pd.DataFrame(st.session_state.peliculas_nuevo_usuario, columns=["movieId", "Título", "Rating"])
             st.dataframe(df_temp[["Título", "Rating"]], use_container_width=True)
 
-            if st.button("Guardar nuevo usuario"):
-                inicio = time.perf_counter()
-
-                calificaciones = [
-                    (movie_id, rating)
-                    for movie_id, _, rating in st.session_state.peliculas_nuevo_usuario
-                ]
-
+            if st.button("💾 Guardar Nuevo Usuario en Base de Datos", use_container_width=True):
+                calificaciones = [(m, r) for m, _, r in st.session_state.peliculas_nuevo_usuario]
                 nuevo_uid, mensaje = motor.agregar_usuario_con_calificaciones(calificaciones)
 
-                fin = time.perf_counter()
-                tiempo = fin - inicio
-
                 if nuevo_uid is not None:
-                    st.success(f"{mensaje} ID: {nuevo_uid}")
-                    st.info(f"Tiempo de ejecución: **{tiempo:.6f} segundos**")
-
-                    # 🔥 RESET PARA RECARGAR DATASET
+                    st.success(f"¡Éxito! {mensaje} Su nuevo ID es: {nuevo_uid}")
                     st.session_state.peliculas_nuevo_usuario = []
-                    st.cache_data.clear()
-                    st.session_state.cargado = False
-                    st.session_state.tiempo_carga_mostrado = False
+                    st.cache_data.clear() # Limpiar cache para que reconozca los nuevos datos
+                    time.sleep(2)
                     st.rerun()
                 else:
                     st.error(mensaje)
+        else:
+            st.info("Aún no has agregado ninguna calificación.")
 
-    # ==============================
-    # GRAFICAS
-    # ==============================
-    with col2:
-        st.subheader("Análisis del Dataset")
 
-        if st.button("Ver Distribución de Datos"):
-            inicio = time.perf_counter()
-
-            fig = motor.graficar_distribucion(matriz)
-
-            fin = time.perf_counter()
-            tiempo = fin - inicio
-
-            st.pyplot(fig)
-            st.info(f"Tiempo de ejecución: **{tiempo:.6f} segundos**")
-
-else:
-    st.error("No se pudo cargar el dataset.")
+# ==============================================================
+# VISTA 4: ANÁLISIS DE DATASET
+# ==============================================================
+elif opcion_menu == "📊 Análisis del Dataset":
+    st.header("📊 Estadísticas del Sistema")
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Usuarios", f"{matriz.shape[0]:,}")
+    col2.metric("Total Películas", f"{matriz.shape[1]:,}")
+    col3.metric("Valoraciones Totales", f"{matriz.count().sum():,}")
+    
+    st.markdown("---")
+    
+    if st.button("📈 Generar Gráfico de Distribución (Long Tail)"):
+        inicio = time.perf_counter()
+        fig = motor.graficar_distribucion(matriz)
+        st.pyplot(fig)
+        st.info(f"⏱️ Gráfico renderizado en {time.perf_counter() - inicio:.4f}s")

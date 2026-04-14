@@ -247,5 +247,139 @@ def graficar_distribucion(matriz):
     
     return fig # Devolvemos el objeto figura
 
+# ==============================================================
+# 7. TAREA 3: MOTOR HÍBRIDO Y MATEMÁTICA MANUAL (INFLUENCERS)
+# ==============================================================
+
+def calcular_scores_objetivos_manual(df_ratings):
+    """
+    Calcula el score real de cada película eliminando el sesgo del usuario.
+    Toda la matemática se hace manualmente con diccionarios y listas.
+    """
+    print("Calculando promedios ajustados manualmente...")
+    
+    # 1. Extraemos los datos a una lista pura de Python para iterar rápido
+    # Formato esperado por cada fila: [userId, movieId, rating]
+    lista_ratings = df_ratings[['userId', 'movieId', 'rating']].values.tolist()
+    
+    suma_global = 0
+    conteo_global = 0
+    
+    sumas_usuarios = {}
+    conteos_usuarios = {}
+    
+    # --- PASO 1: Calcular sumatorias totales y por usuario ---
+    for fila in lista_ratings:
+        u_id = int(fila[0])
+        m_id = int(fila[1])
+        nota = float(fila[2])
+        
+        # Para el promedio global
+        suma_global += nota
+        conteo_global += 1
+        
+        # Para el promedio de cada usuario
+        if u_id not in sumas_usuarios:
+            sumas_usuarios[u_id] = 0.0
+            conteos_usuarios[u_id] = 0
+            
+        sumas_usuarios[u_id] += nota
+        conteos_usuarios[u_id] += 1
+        
+    # --- PASO 2: Calcular promedios (Divisiones manuales) ---
+    promedio_global = suma_global / conteo_global if conteo_global > 0 else 0
+    
+    promedios_usuarios = {}
+    for u_id in sumas_usuarios:
+        promedios_usuarios[u_id] = sumas_usuarios[u_id] / conteos_usuarios[u_id]
+        
+    # --- PASO 3: Calcular el Score Ajustado de las películas ---
+    sumas_ajustadas_pelis = {}
+    conteos_pelis = {}
+    
+    for fila in lista_ratings:
+        u_id = int(fila[0])
+        m_id = int(fila[1])
+        nota = float(fila[2])
+        
+        # Matemática: Nota original - Promedio de ese usuario
+        nota_ajustada = nota - promedios_usuarios[u_id]
+        
+        if m_id not in sumas_ajustadas_pelis:
+            sumas_ajustadas_pelis[m_id] = 0.0
+            conteos_pelis[m_id] = 0
+            
+        sumas_ajustadas_pelis[m_id] += nota_ajustada
+        conteos_pelis[m_id] += 1
+
+    # --- PASO 4: Generar el diccionario final de Scores Objetivos ---
+    scores_finales_peliculas = {}
+    for m_id in sumas_ajustadas_pelis:
+        promedio_ajustado = sumas_ajustadas_pelis[m_id] / conteos_pelis[m_id]
+        
+        # Score final = Promedio Global + Promedio Ajustado de la peli
+        score_final = promedio_global + promedio_ajustado
+        
+        # Control manual de límites (0 a 5)
+        if score_final > 5.0: 
+            score_final = 5.0
+        elif score_final < 0.0: 
+            score_final = 0.0
+            
+        scores_finales_peliculas[m_id] = score_final
+        
+    return scores_finales_peliculas, promedio_global
+
+
+def calcular_afinidad_generos_manual(historial_usuario_lista, dicc_peliculas_generos):
+    """
+    Calcula qué tanto le gusta un género a un usuario combinando cantidad y nota.
+    - historial_usuario_lista: lista de listas [[movieId, rating], [movieId, rating]...]
+    - dicc_peliculas_generos: diccionario {movieId: ["Action", "Sci-Fi", ...]}
+    """
+    vistas_por_genero = {}
+    sumas_por_genero = {}
+    vistas_totales = 0
+    
+    # --- PASO 1: Recorrer el historial del usuario ---
+    for fila in historial_usuario_lista:
+        m_id = int(fila[0])
+        nota = float(fila[1])
+        vistas_totales += 1
+        
+        # Obtener los géneros de esta película (Si no existe, devuelve lista vacía)
+        generos_peli = dicc_peliculas_generos.get(m_id, [])
+        
+        for genero in generos_peli:
+            # Descartamos si la película no tiene género válido
+            if genero == "(no genres listed)": 
+                continue
+                
+            if genero not in vistas_por_genero:
+                vistas_por_genero[genero] = 0
+                sumas_por_genero[genero] = 0.0
+                
+            vistas_por_genero[genero] += 1
+            sumas_por_genero[genero] += nota
+
+    # --- PASO 2: Aplicar la fórmula de afinidad ---
+    afinidad_final = {}
+    
+    if vistas_totales == 0:
+        return afinidad_final
+    
+    for genero in vistas_por_genero:
+        # Promedio de notas para ese género
+        promedio_nota_genero = sumas_por_genero[genero] / vistas_por_genero[genero]
+        
+        # Frecuencia (qué porcentaje de sus películas son de este género)
+        frecuencia = vistas_por_genero[genero] / vistas_totales
+        
+        # Afinidad = Frecuencia * Promedio de Nota
+        afinidad_final[genero] = frecuencia * promedio_nota_genero
+        
+    return afinidad_final
+
+
 if __name__ == "__main__":
     menu()
